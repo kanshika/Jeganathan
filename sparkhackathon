@@ -1,0 +1,300 @@
+package org.apache.ssql
+
+import org.apache.spark._
+import org.apache.spark.sql._
+import org.apache.spark.sql.Column
+import org.apache.spark.SparkContext
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.functions._
+import scala.util.matching.Regex._
+
+case class insureclass(IssuerId:Int,IssuerId2:Int,BusinessDate:String,StateCode:String,SourceName:String
+ ,NetworkName:String,NetworkURL:String,custnum:Int,MarketCoverage:String,DentalOnlyPlan:String)
+
+object sparkhackathon {
+  
+  def main(args:Array[String]) {
+    
+    //println("Enable Hive Support")
+    val spark = SparkSession.builder().appName("sparkhack2").master("local[*]")
+    //.config("hive.metastore.uris","thrift://localhost:9083")
+    //.config("spark.sql.warehouse.dir","hdfs://localhost:54310/user/hive/warehouse")
+    //.enableHiveSupport()
+    .getOrCreate();
+    
+    spark.sparkContext.setLogLevel("ERROR")
+    val sc=spark.sparkContext;
+    val sqlc=spark.sqlContext;
+    import sqlc.implicits._ //to convert Data Frame
+ 
+ println("---------------insuranceinfo1.csv------------------")    
+ println("1. Load the file1 (insuranceinfo1.csv) from HDFS using textFile API into an RDD insuredata")     
+ val insuredata=sc.textFile("hdfs://localhost:54310/user/hduser/sparkhack2/insuranceinfo1.csv")
+  
+ //Remove header
+ println("2. Remove the header")
+ val header=insuredata.first()
+ val rddwithoutheader=insuredata.filter(x => x != header)
+ 
+ println("3. Display the count and show few rows and check whether header is removed")
+ println("Count of insuranceinfo1 :"+ rddwithoutheader.count())
+ rddwithoutheader.collect().take(5).foreach(println);
+
+//4. Remove the blank lines in the rdd
+println("4. Remove the blank lines in the rdd")    
+val rdd1=rddwithoutheader.map(x => x.trim()).filter(x => x.length>0).filter(x => x.size !=0)
+.map(x => x.split(",",-1)).filter(x => !x.contains(""));
+rdd1.collect().take(5).foreach(println);
+
+//6. Filter number of fields are equal to 10
+println("6. Filter number of fields are equal to 10")
+val rddfilter=rdd1.filter(x => x.length==10);
+println(rddfilter.count());
+
+/*7. Add case class namely insureclass with the field names used as per the header record in the file
+and apply to the above data to create schemaed RDD. */
+println("7. Apply schema insureclass")
+//case class insureclass(IssuerId:Int,IssuerId2:Int,BusinessDate:String,StateCode:String,SourceName:String
+ //,NetworkName:String,NetworkURL:String,custnum:Int,MarketCoverage:String,DentalOnlyPlan:String)
+val schemedrdd = rddfilter.map(x => insureclass(x(0).toInt,x(1).toInt,x(2).toString(),x(3).toString()
+  ,x(4).toString(),x(5).toString(),x(6).toString(),x(7).toInt,x(8).toString(),x(9).toString()));
+schemedrdd.collect().take(5).foreach(println);
+
+val schemedrdd1=sc.parallelize("schemedrdd")
+
+/* 8. Take the count of the RDD created in step 7 and step 1 and print 
+how many rows are removed in the cleanup process of removing fields does not equals 10 */
+println("count of the RDD created in step 7: "+ schemedrdd.count());
+println("count of the RDD created in step 1: "+ insuredata.count());
+
+/*9. Create another RDD namely rejectdata and store the row that does not equals 10 fields,
+and analyze why and provide your view here. */
+val rejectdata=(insuredata.count()-schemedrdd.count())
+val rejectdata1=rddwithoutheader.filter(x => x != schemedrdd)
+println("Rejected RDD Count : " +rejectdata);
+rejectdata1.take(10).foreach(println);
+
+//10. Load the file2 (insuranceinfo2.csv) from HDFS using textFile API into an RDD insuredata2
+println("---------------insuranceinfo2.csv------------------")
+println("10. Load the file2 (insuranceinfo2.csv) from HDFS using textFile API into an RDD insuredata2")
+val insuredata2=sc.textFile("hdfs://localhost:54310/user/hduser/sparkhack2/insuranceinfo2.csv")
+  
+ //Remove header
+ println("2. Remove the header")
+ val header1=insuredata2.first()
+ val rddwithoutheader1=insuredata2.filter(x => x != header1)
+
+ println("3. Display the count and show few rows and check whether header1 is removed")
+ println("Count of insuranceinfo2 without header :"+ rddwithoutheader1.count())
+ rddwithoutheader1.collect().take(5).foreach(println);
+
+//4. Remove the blank lines in the rdd
+println("4. Remove the blank lines in the rdd")    
+val rddd1=rddwithoutheader1.map(x => x.trim()).filter(x => x.length>0).filter(x => x.size !=0)
+.map(x => x.split(",",-1)).filter(x => !x.contains(""));
+rddd1.collect().take(5).foreach(println);
+
+//6. Filter number of fields are equal to 10
+println("6. Filter number of fields are equal to 10")
+val rddfilter1=rddd1.filter(x => x.length==10);
+println(rddfilter1.count());
+
+/*7. Add case class namely insureclass with the field names used as per the header record in the file
+and apply to the above data to create schemaed RDD. */
+println("7. Apply schema insureclass")
+val schemedrdd2 = rddfilter1.map(x => insureclass(x(0).toInt,x(1).toInt,x(2).toString(),x(3).toString()
+  ,x(4).toString(),x(5).toString(),x(6).toString(),x(7).toInt,x(8).toString(),x(9).toString()));
+schemedrdd2.collect().take(5).foreach(println);
+
+/*9. Create another RDD namely rejectdata and store the row that does not equals 10 fields,
+and analyze why and provide your view here. */
+val rejectdata2=(rddwithoutheader1.count()-schemedrdd2.count())
+val rejectdata3=rddwithoutheader1.filter(x => x != schemedrdd2)
+println("Rejected RDD Count : " +rejectdata2);
+rejectdata3.take(10).foreach(println);
+
+println("---------------insuranceinfo2.csv end------------------")
+//12. Merge the both header removed RDDs derived in steps 7 and 11 into an RDD namely insuredatamerged
+println("12. Merge the both header removed RDDs derived in steps 7 and 11 into an RDD namely insuredatamerged")
+val insuredatamerged=schemedrdd.union(schemedrdd2);
+
+//13. Cache it either to memory or any other persistence levels you want, display only first few rows
+println("13. Cache it either to memory or any other persistence levels you want, display only first few rows")
+//insuredatamerged.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK);
+//insuredatamerged.cache();
+insuredatamerged.distinct().take(5).foreach(println);
+
+//14. Calculate the count of rdds created in step 7+11 and rdd in step 12, check whether they are matching.
+println("14. Calculate the count of rdds created in step 7+11 and rdd in step 12, check whether they are matching")
+//schemedrdd - 18 , schemedrdd2 - 1360 = 1378 , insuredatamerged - 1378
+println("insure data merged count : " + insuredatamerged.count() + 
+ ", insuranceinfo1.csv valid count : " + schemedrdd.count() + " and " + 
+ "insuranceinfo2.csv valid count : " + schemedrdd2.count());
+
+//15. Remove duplicates from this merged RDD created in step 12 and print how many duplicate rows are there.
+println("15. Remove duplicates from this merged RDD created in step 12 and print how many duplicate rows are there")
+val dist=insuredatamerged.distinct;
+val duplicate=insuredatamerged.subtract(dist)
+println("Distinct from this merged RDD : " + dist.count())
+println("Duplicate rows : " + duplicate.count())
+
+//----
+
+//16. Increase the number of partitions to 8 and name it as insuredatarepart.
+println("16. Increase the number of partitions to 8 and name it as insuredatarepart")
+val insuredatarepart=insuredatamerged.repartition(8).toDF();
+insuredatarepart.createOrReplaceTempView("insuredatarepartview")
+
+/* 17. Split the above RDD using the businessdate field into rdd_20191001 and 
+rdd_20191002 based on the BusinessDate of 2019-10-01 and 2019-10-02 respectively */
+println("Split lthe above RDD using the businessdate field into rdd_20191001 and rdd_20191002")
+val rddsplit=insuredatamerged.toDF().withColumn("rdd_20191001",split(($"businessdate"),"2019-10-01"))
+.withColumn("rdd_20191002", split(($"businessdate"),"2019-10-02"))
+
+
+//18. Store the RDDs created in step 9, 12, 17 into HDFS locations
+println("18. Store the RDDs created in step 9, 12, 17 into HDFS locations")
+//rejectdata1.saveAsTextFile("hdfs://localhost:54310/user/hduser/sparkhack2/rejectdata1")
+//insuredatamerged.saveAsTextFile("hdfs://localhost:54310/user/hduser/sparkhack2/insuredatamer")
+rddsplit.write.mode("overwrite").json("hdfs://localhost:54310/user/hduser/sparkhack2/businessdate")
+
+/*19. Convert the RDD created in step 16 above into Dataframe namely insuredaterepartdf applying the 
+structtype created in the step 20 given in the next usecase */
+
+//20. Create structuretype for all the columns as per the insuranceinfo1.csv.
+val insuranceinfo1struct= StructType(Array(StructField("IssuerId",IntegerType,true),StructField("IssuerId2",IntegerType,true)
+,StructField("BusinessDate",DateType,true),StructField("StateCode",StringType,true),StructField("SourceName",StringType,true)
+ ,StructField("NetworkName",StringType,true),StructField("NetworkURL",StringType,true),StructField("custnum",IntegerType,true)
+ ,StructField("MarketCoverage",StringType,true),StructField("DentalOnlyPlan",StringType,true)));
+
+println("Convert the RDD created in step 16 above into Dataframe namely insuredaterepartdf applying the structtype")
+val insuredaterepartdf=spark.createDataFrame(insuredatarepart.rdd, insuranceinfo1struct);
+
+/* 21. Create dataframes/datasets using the csv module with option to escape ‘,’ accessing the insuranceinfo1.csv
+and insuranceinfo2.csv files, apply the schema of the structure type created in the step 20 */
+val dfinsuranceinfo1=sqlc.read.option("delimiter", ",").option("header", true).option("escape",",")
+.schema(insuranceinfo1struct).csv("hdfs://localhost:54310/user/hduser/sparkhack2/insuranceinfo1.csv");
+
+val dfinsuranceinfo2=sqlc.read.option("delimiter", ",").option("header", true).option("escape",",")
+.schema(insuranceinfo1struct).csv("hdfs://localhost:54310/user/hduser/sparkhack2/insuranceinfo1.csv")
+
+val ds1=dfinsuranceinfo1.as[insureclass];
+val ds2=dfinsuranceinfo2.as[insureclass];
+
+//22. Apply the below DSL functions in the DFs created in step 21.
+println("22. Apply the below DSL functions in the DFs created in step 21")
+val df1=dfinsuranceinfo1.withColumnRenamed("StateCode", "stcd").withColumnRenamed("SourceName", "srcnm")
+.withColumn("issueridcomposite", concat(col("IssuerId").cast("String"),lit(" "),'IssuerId2.cast("String")))
+.drop("DentalOnlyPlan").withColumn("sysdt",current_date()).withColumn("systs",current_timestamp());
+df1.show(5,false)
+
+ds2.createOrReplaceTempView("ds2view");
+
+/*23. Remove the rows contains null in any one of the field and count the number of rows
+which contains all columns with some value. */ 
+println("Rows which contains all columns with some value")
+val df2=df1.drop("MarketCoverage")
+println(df2.count())
+
+import org.apache.spark.sql.functions._
+val remspecialudf= udf(remspecialchar _);
+
+//26. Call the above udf in the DSL by passing NetworkName column as an argument to get the special characters removed.
+println("udf in the DSL by passing NetworkName column as an argument to get the special characters removed")
+val dfudf= ds2.select($"IssuerId", remspecialudf(col("NetworkName")))
+
+//27. Save the DF generated in step 26 in JSON into HDFS with overwrite option.
+println("27. Save the DF generated in step 26 in JSON into HDFS with overwrite option")
+dfudf.write.mode("overwrite").json("hdfs://localhost:54310/user/hduser/sparkhack2/dfudf.json")
+
+/* 28. Save the DF generated in step 26 into CSV format with header name as per the DF 
+and delimited by ~ into HDFS with overwrite option. */
+dfudf.coalesce(1).write.mode("overwrite").option("header","true").option("timestampFormat","yyyy-MM-dd HH:mm:ss")
+.option("compression","gzip").option("delimiter","~").csv("hdfs://localhost:54310/user/hduser/dfudf.csv")
+
+/*
+//29. Save the DF generated in step 26 into hive table with append option.
+println("29. Save the DF generated in step 26 into hive table with append option")
+spark.sql("create external table if not exists default.dfudf(IssuerId Int,NetworkName String) location 'hdfs://localhost:54310/user/hive/warehouse'") 
+  dfudf.write.mode("append").saveAsTable("dfudf")
+  println("Hive Read")
+  spark.sql("select * from dfudf").show()
+*/
+////-----------
+
+/* 30. Load the file3 (custs_states.csv) from the HDFS location, using textfile API in an RDD custstates,
+  this file contains 2 type of data one with 5 columns contains customer master
+  info and other data with statecode and description of 2 columns. */
+  println("30. Load the file3 (custs_states.csv) from the HDFS location")
+  val custs_states=sc.textFile("hdfs://localhost:54310/user/hduser/sparkhack2/custs_states.csv")
+  
+ /* 31. Split the above data into 2 RDDs, first RDD namely custfilter should be loaded only 
+  with 5 columns data and second RDD namely statesfilter should be only loaded with 2 columns data.*/
+val rdd=custs_states.map(x => x.trim()).filter(x => x.size !=0).map(x => x.split(",",-1))//.filter(x => !x.contains(""));  
+val custfilter=rdd.filter(x => x.length==5); 
+val statesfilter=rdd.filter(x => x.length==2);
+println("custfilter : " + custfilter.count())
+println("statesfilter : " + statesfilter.count())  
+
+/* 32. Load the file3 (custs_states.csv) from the HDFS location, using CSV Module in a DF custstatesdf,
+ * this file contains 2 type of data one with 5 columns contains customer master info and other data with
+ * statecode and description of 2 columns.  
+ */
+
+println("32. Load the file3 (custs_states.csv) from the HDFS location, using CSV Module in a DF custstatesdf")
+val custstatesdf=sqlc.read.option("delimiter", ",").option("inferschema", true)
+.csv("hdfs://localhost:54310/user/hduser/sparkhack2/custs_states.csv");
+custstatesdf.printSchema()
+/* 33. Split the above data into 2 DFs, first DF namely custfilterdf should be loaded only with 
+ * 5 columns data and second DF namely statesfilterdf should be only loaded with 2 columns  data.
+ */
+val custfilterdf=custstatesdf.select("*").filter(col("_c0").isNotNull).filter(col("_c1").isNotNull)
+.filter(col("_c2").isNotNull);
+val statesfilterdf=custstatesdf.select($"_c0",$"_c1",$"_c2").filter(col("_c0").isNotNull).filter(col("_c1").isNotNull)
+.filter(col("_c2").isNull);
+println("custfilter : " + custfilterdf.count())
+println("statesfilter : " + statesfilterdf.count())  
+
+//34. Register the above DFs as temporary views as custview and statesview.
+println("34. Register the above DFs as temporary views as custview and statesview")
+custfilterdf.createOrReplaceTempView("custview")
+//val statesfilterdf1=statesfilterdf.drop($"_c2")
+statesfilterdf.createOrReplaceTempView("statesview")
+statesfilterdf.printSchema()
+custfilterdf.printSchema()
+//custfilterdf.show(5)
+//statesfilterdf.show(5)
+
+//35. Register the DF generated in step 22 as a tempview namely insureview
+println("35. Register the DF generated in step 22 as a tempview namely insureview")
+ds2.createOrReplaceTempView("insureview");
+ds2.printSchema()
+
+//37. Write an SQL query with the below processing
+println("37. Write an SQL query with the below processing")
+val sql=spark.sql("""select remspecialudf(in.NetworkName) as cleannetworkname, current_date() as curdt,current_timestamp() as curts
+,year(col("in.BusinessDate") as yr,month(col("in.BusinessDate") as mth,case when in.NetworkURL like('%http%') then http/https 
+else noprotocol end as protocol,in.IssuerId,in.IssuerId2,in.BusinessDate,in.StateCode,in.SourceName,in.NetworkName,
+in.NetworkURL,in.custnum,in.MarketCoverage,in.DentalOnlyPlan,st._c1 as statedesc,cu._c3 as age,cu._c4 as profession
+from insureview as in inner join statesview st on in.StateCode=st._c0 inner join custview as cu on
+in.custnum=cu._c0""")
+
+sql.write.mode("overwrite").parquet("hdfs://localhost:54310/user/hduser/sparkhack2/sqlprocessing.parquet")
+
+
+spark.stop()
+
+}
+
+ 
+
+ def remspecialchar(i:String):String = {
+   
+   val pattern ="([0-9a-zA-Z-#() ]+): ([0-9a-zA-Z-#() ]+)".r 
+   return pattern.replaceAllIn(i, "([0-9a-zA-Z-#() ]+): ([0-9a-zA-Z-#() ]+\\[]_)")
+ }  
+ 
+  
+}
